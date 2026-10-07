@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhishGuard – Phishing URL Detection</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  <!-- Chart.js CDN (only for visual charts, no tracking) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     HEADER / NAV
+═══════════════════════════════════════════ -->
+<header class="header">
+  <div class="logo">
+    <span class="logo-icon">🛡️</span>
+    <span class="logo-text">PhishGuard</span>
+    <span class="logo-sub">URL Threat Intelligence</span>
+  </div>
+  <nav class="nav">
+    <button class="nav-btn active" data-tab="dashboard">Dashboard</button>
+    <button class="nav-btn" data-tab="performance">Model Performance</button>
+    <button class="nav-btn" data-tab="history">Scan History</button>
+    <button class="nav-btn" data-tab="about">About</button>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════
+     MAIN CONTENT
+═══════════════════════════════════════════ -->
+<main class="main">
+
+  <!-- ─── TAB: DASHBOARD ─── -->
+  <section id="tab-dashboard" class="tab-content active">
+
+    <!-- Stat cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">🔍</div>
+        <div class="stat-value" id="stat-total">{{ stats.total }}</div>
+        <div class="stat-label">URLs Scanned</div>
+      </div>
+      <div class="stat-card danger">
+        <div class="stat-icon">🎣</div>
+        <div class="stat-value" id="stat-phishing">{{ stats.phishing }}</div>
+        <div class="stat-label">Phishing Detected</div>
+      </div>
+      <div class="stat-card success">
+        <div class="stat-icon">✅</div>
+        <div class="stat-value" id="stat-legit">{{ stats.legitimate }}</div>
+        <div class="stat-label">Legitimate URLs</div>
+      </div>
+      <div class="stat-card accent">
+        <div class="stat-icon">🤖</div>
+        <div class="stat-value" id="stat-acc">
+          {% if ml_accuracy > 0 %}{{ "%.1f"|format(ml_accuracy * 100) }}%{% else %}–{% endif %}
+        </div>
+        <div class="stat-label">Model Accuracy</div>
+      </div>
+    </div>
+
+    <!-- Scanner card -->
+    <div class="scanner-card">
+      <h2 class="scanner-title">🔎 Scan a URL</h2>
+      <p class="scanner-desc">Enter any URL to check whether it is phishing or legitimate using ML and Neural Network analysis.</p>
+
+      {% if not models_ready %}
+      <div class="alert alert-warn">
+        ⚠️ Models are not trained yet. Please run <code>python train_model.py</code> first, then restart the app.
+      </div>
+      {% endif %}
+
+      <div class="input-row">
+        <input
+          type="text"
+          id="url-input"
+          class="url-input"
+          placeholder="https://example.com/path?query=value"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="scan-btn" class="scan-btn" {% if not models_ready %}disabled{% endif %}>
+          <span id="scan-btn-text">Scan URL</span>
+          <span id="scan-btn-spinner" class="spinner hidden"></span>
+        </button>
+      </div>
+      <div id="scan-error" class="error-msg hidden"></div>
+    </div>
+
+    <!-- Result card (hidden until scan) -->
+    <div id="result-card" class="result-card hidden">
+
+      <div id="result-banner" class="result-banner">
+        <span id="result-icon"></span>
+        <span id="result-label"></span>
+      </div>
+
+      <div class="result-body">
+
+        <!-- Model predictions -->
+        <div class="predictions-grid">
+          <div class="pred-box">
+            <div class="pred-title">🌲 Random Forest (ML)</div>
+            <div id="ml-pred" class="pred-label"></div>
+            <div class="confidence-bar-wrap">
+              <div id="ml-conf-bar" class="confidence-bar"></div>
+            </div>
+            <div id="ml-conf-text" class="conf-text"></div>
+          </div>
+          <div class="pred-box">
+            <div class="pred-title">🧠 Neural Network (NN)</div>
+            <div id="nn-pred" class="pred-label"></div>
+            <div class="confidence-bar-wrap">
+              <div id="nn-conf-bar" class="confidence-bar"></div>
+            </div>
+            <div id="nn-conf-text" class="conf-text"></div>
+          </div>
+        </div>
+
+        <!-- Explanation -->
+        <div class="explanation-box">
+          <h4>💡 Why this result?</h4>
+          <ul id="reasons-list"></ul>
+        </div>
+
+        <!-- Features table -->
+        <details class="features-details">
+          <summary>📊 Extracted URL Features</summary>
+          <div class="features-table-wrap">
+            <table class="features-table">
+              <thead><tr><th>Feature</th><th>Value</th></tr></thead>
+              <tbody id="features-tbody"></tbody>
+            </table>
+          </div>
+        </details>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TAB: MODEL PERFORMANCE ─── -->
+  <section id="tab-performance" class="tab-content hidden">
+    <h2 class="section-title">📈 Model Performance</h2>
+    <p class="section-desc">Comparison of Random Forest and Neural Network metrics evaluated on the test set.</p>
+
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3 class="chart-title">Accuracy Comparison</h3>
+        <canvas id="chart-accuracy" height="220"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3 class="chart-title">Precision · Recall · F1</h3>
+        <canvas id="chart-prf" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="metrics-table-wrap">
+      <h3>Detailed Metrics</h3>
+      <table class="metrics-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Accuracy</th>
+            <th>Precision</th>
+            <th>Recall</th>
+            <th>F1-Score</th>
+          </tr>
+        </thead>
+        <tbody id="metrics-tbody">
+          <tr><td colspan="5" style="text-align:center">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cm-grid">
+      <div class="cm-card">
+        <h3>Random Forest – Confusion Matrix</h3>
+        <img src="{{ url_for('static', filename='images/rf_cm.png') }}"
+             alt="Random Forest Confusion Matrix"
+             class="cm-img"
+             onerror="this.parentElement.style.display='none'" />
+      </div>
+      <div class="cm-card">
+        <h3>Neural Network – Confusion Matrix</h3>
+        <img src="{{ url_for('static', filename='images/nn_cm.png') }}"
+             alt="Neural Network Confusion Matrix"
+             class="cm-img"
+             onerror="this.parentElement.style.display='none'" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── TAB: SCAN HISTORY ─── -->
+  <section id="tab-history" class="tab-content hidden">
+    <h2 class="section-title">🕒 Scan History</h2>
+    <p class="section-desc">Last 50 URLs analysed by PhishGuard.</p>
+
+    <div class="history-table-wrap">
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>URL</th>
+            <th>Result</th>
+            <th>ML</th>
+            <th>ML Conf.</th>
+            <th>NN</th>
+            <th>NN Conf.</th>
+            <th>Date / Time</th>
+          </tr>
+        </thead>
+        <tbody id="history-tbody">
+          <tr><td colspan="8" style="text-align:center">No scans yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ─── TAB: ABOUT ─── -->
+  <section id="tab-about" class="tab-content hidden">
+    <h2 class="section-title">ℹ️ About PhishGuard</h2>
+
+    <div class="about-grid">
+      <div class="about-card">
+        <h3>🎣 What is Phishing?</h3>
+        <p>
+          Phishing is a type of cyber-attack where criminals create fake websites or send
+          deceptive messages that impersonate legitimate organisations (banks, e-commerce
+          sites, social networks) to steal sensitive information such as passwords and
+          credit card numbers.
+        </p>
+        <p>
+          Phishing URLs often have tell-tale signs: they use IP addresses instead of
+          domain names, contain suspicious keywords like "login", "verify" or "secure",
+          include an unusually large number of sub-domains, or don't use HTTPS.
+        </p>
+      </div>
+
+      <div class="about-card">
+        <h3>🤖 How PhishGuard Works</h3>
+        <p>
+          PhishGuard performs <strong>static analysis only</strong> — it never visits
+          the submitted URL.  It extracts 25 structural features from the URL string and
+          feeds them to two independently trained models:
+        </p>
+        <ul>
+          <li><strong>Random Forest</strong> – an ensemble of decision trees that votes
+              on the classification.</li>
+          <li><strong>Neural Network</strong> – a 4-layer deep learning model trained
+              with Keras/TensorFlow.</li>
+        </ul>
+        <p>
+          The final verdict is determined by a majority-vote ensemble of the two models,
+          with confidence as the tiebreaker.
+        </p>
+      </div>
+
+      <div class="about-card">
+        <h3>📐 URL Features Analysed</h3>
+        <ul>
+          <li>URL length &amp; entropy</li>
+          <li>Number of dots, hyphens, underscores, slashes</li>
+          <li>HTTPS presence</li>
+          <li>IP address in host</li>
+          <li>Subdomain depth</li>
+          <li>Domain &amp; path length</li>
+          <li>Number of query parameters</li>
+          <li>Suspicious keywords (login, verify, paypal, …)</li>
+          <li>Special characters count</li>
+          <li>Port number presence</li>
+          <li>Double-slash redirect pattern</li>
+        </ul>
+      </div>
+
+      <div class="about-card">
+        <h3>🛠️ Technology Stack</h3>
+        <ul>
+          <li><strong>Backend:</strong> Python · Flask</li>
+          <li><strong>ML:</strong> Scikit-learn (Random Forest)</li>
+          <li><strong>DL:</strong> TensorFlow / Keras</li>
+          <li><strong>Data:</strong> Pandas · NumPy</li>
+          <li><strong>Database:</strong> SQLite</li>
+          <li><strong>Frontend:</strong> HTML5 · CSS3 · Vanilla JS · Chart.js</li>
+        </ul>
+        <p>
+          Built as a <strong>BCA Mini Project</strong> to demonstrate the application
+          of machine learning in cybersecurity.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <span>PhishGuard &copy; 2025 &nbsp;|&nbsp; BCA Mini Project &nbsp;|&nbsp; Static URL analysis only — no URLs are visited.</span>
+</footer>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
