@@ -1,6 +1,6 @@
 # 🛡️ PhishGuard – Phishing URL Detection Web App
 
-> **BCA Mini Project** | Python · Flask · Scikit-learn · TensorFlow · SQLite
+ | Python · Flask · Scikit-learn · TensorFlow · SQLite
 
 PhishGuard analyses the *structure* of a URL and predicts whether it is **Phishing** or **Legitimate** using two independently trained models — a **Random Forest** (ML) and a **Neural Network** (Deep Learning). No URL is ever visited; analysis is completely static.
 
